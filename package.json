@@ -9,7 +9,9 @@
   "scripts": {
     "test": "node --test --import ./tests/register-ts.mjs \"tests/*.test.ts\"",
     "demo": "node --import ./tests/register-ts.mjs src/demo/run.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "demo:live": "PRAVA_MODE=rest node --import ./tests/register-ts.mjs src/demo/run.ts",
+    "setup:mandates": "PRAVA_MODE=rest node --import ./tests/register-ts.mjs src/scripts/setup-mandates.ts"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

@@ -1,18 +1,28 @@
 /**
  * End-to-end demo: three agents, six proposals, three lanes, real settlement.
  *
- * Runs entirely offline against the sandbox gateway and fixture grounding, so it
- * works with no keys and no network — `npm run demo`. Swap `SandboxPrava` for
- * `PravaClient` and `FixtureGroundingSource` for `SensoClient` and the identical
- * code path moves real money.
+ * Two modes, same code path — which is the point of the `PravaGateway` interface:
+ *
+ *   npm run demo       offline. No keys, no network, no money. Rehearse freely.
+ *   npm run demo:live  Prava's REST sandbox. Real mandates, real charges, real
+ *                      transaction ids, still no real money.
+ *
+ * Live mode needs `PRAVA_SECRET_KEY=sk_test_…` and mandates already approved via
+ * `npm run setup:mandates`. Grounding uses Senso when `SENSO_API_KEY` is set and
+ * the local policy fixture otherwise.
  */
 import { AGENTS, POLICIES, budgetAgent, renewalAgent, restockAgent } from "../lib/agents/index";
 import { propose, settleApproved, type GovernorDeps } from "../lib/governor/execute";
 import { format } from "../lib/governor/money";
 import type { Mandate, SpendProposal } from "../lib/governor/types";
+import type { PravaGateway } from "../lib/prava/client";
+import { FileMerchantRegistry } from "../lib/prava/registry";
+import { PravaRestClient } from "../lib/prava/rest";
 import { SandboxPrava } from "../lib/prava/sandbox";
-import { FixtureGroundingSource } from "../lib/senso/client";
+import { FixtureGroundingSource, SensoClient, type GroundingSource } from "../lib/senso/client";
 import { Ledger } from "../lib/store/ledger";
+
+const LIVE = process.env.PRAVA_MODE === "rest";
 
 const NOW = new Date("2026-07-31T09:00:00Z");
 const WEEK_OUT = "2026-08-07T09:00:00Z";
@@ -50,17 +60,51 @@ const POLICY_CORPUS = new FixtureGroundingSource([
   // citation, which is exactly the case gate 4 exists to catch.
 ]);
 
+/**
+ * Pick the payment surface. In live mode the mandates come from Prava rather than
+ * from the fixtures above, so what the demo can actually charge is determined by
+ * what you approved with a passkey — not by anything in this file.
+ */
+function buildGateway(): { prava: PravaGateway; grounding: GroundingSource; modeLabel: string } {
+  if (!LIVE) {
+    return {
+      prava: new SandboxPrava({ mandates: MANDATES }),
+      grounding: POLICY_CORPUS,
+      modeLabel: "offline double · no network, no money",
+    };
+  }
+
+  const client = new PravaRestClient({ registry: new FileMerchantRegistry() });
+  return {
+    prava: client,
+    grounding: process.env.SENSO_API_KEY ? new SensoClient() : POLICY_CORPUS,
+    modeLabel: client.isSandbox
+      ? `Prava REST sandbox · real charges, no real money${process.env.SENSO_API_KEY ? " · Senso live" : " · policy fixture"}`
+      : "Prava LIVE · REAL MONEY",
+  };
+}
+
 async function main() {
-  const prava = new SandboxPrava({ mandates: MANDATES });
+  const { prava, grounding, modeLabel } = buildGateway();
   const ledger = new Ledger();
-  const deps: GovernorDeps = { prava, grounding: POLICY_CORPUS, ledger, clock: () => NOW };
+  // In live mode the clock must be real, or mandate expiry is evaluated against a
+  // date that has nothing to do with when the mandate actually lapses.
+  const deps: GovernorDeps = { prava, grounding, ledger, clock: LIVE ? () => new Date() : () => NOW };
 
   const proposals = buildProposals();
+  const available = await prava.listMandates();
 
   console.log(`\n${"═".repeat(78)}`);
   console.log("  MetaboSpend — governed spend reflex");
-  console.log(`  ${proposals.length} proposals from 3 agents · ${MANDATES.length} passkey-approved mandates`);
+  console.log(`  ${modeLabel}`);
+  console.log(`  ${proposals.length} proposals from 3 agents · ${available.length} approved mandate(s)`);
   console.log("═".repeat(78));
+
+  if (LIVE && available.length === 0) {
+    console.log("\n  No active mandates. Every spend will escalate to a human, which is");
+    console.log("  correct but makes for a dull demo. Run `npm run setup:mandates` and");
+    console.log("  approve them with your passkey first.\n");
+  }
 
   for (const proposal of proposals) {
     const policy = POLICIES[proposal.agent];
@@ -85,7 +129,7 @@ async function main() {
     }
   }
 
-  summarize(ledger, prava);
+  await summarize(ledger, prava, available);
   ledger.close();
 }
 
@@ -168,7 +212,7 @@ function label(settlement: string): string {
   }[settlement] ?? settlement;
 }
 
-function summarize(ledger: Ledger, prava: SandboxPrava) {
+async function summarize(ledger: Ledger, prava: PravaGateway, before: Mandate[]) {
   const all = ledger.list({ limit: 1000 });
   const counts = all.reduce<Record<string, number>>((acc, p) => {
     acc[p.settlement] = (acc[p.settlement] ?? 0) + 1;
@@ -184,16 +228,30 @@ function summarize(ledger: Ledger, prava: SandboxPrava) {
   for (const total of ledger.settledTotals()) {
     console.log(`\n  Settled: ${format(total.totalMinor, total.currency)} across ${total.charges} charge(s)`);
   }
-  console.log("\n  Mandate balances after settlement:");
-  for (const mandate of MANDATES) {
-    const before = mandate.remaining;
-    const after = prava.remainingOf(mandate.id);
-    const moved = before !== after;
-    console.log(`    ${mandate.id.padEnd(16)} ${before.padStart(9)} → ${after.padStart(9)}${moved ? "  ✓ drawn down" : ""}`);
+
+  // Re-read balances from the gateway rather than trusting our own arithmetic —
+  // the network is the authority on what is left.
+  const after = await prava.listMandates();
+  if (before.length > 0) {
+    console.log("\n  Mandate balances, re-read from Prava after settlement:");
+    for (const mandate of before) {
+      const now = after.find((m) => m.id === mandate.id);
+      const remaining = now?.remaining ?? "consumed";
+      const moved = remaining !== mandate.remaining;
+      console.log(`    ${mandate.id.padEnd(20)} ${mandate.remaining.padStart(9)} → ${remaining.padStart(9)}${moved ? "  ✓ drawn down" : ""}`);
+    }
   }
 
-  const unreported = prava.unreportedCharges();
-  console.log(`\n  Unsettled network authorizations: ${unreported.length === 0 ? "none ✓" : unreported.join(", ")}`);
+  // The offline double can prove no authorization was left open. Against a real
+  // API we cannot assert that locally, so we say so rather than imply a check.
+  if (prava instanceof SandboxPrava) {
+    const unreported = prava.unreportedCharges();
+    console.log(`\n  Unsettled network authorizations: ${unreported.length === 0 ? "none ✓" : unreported.join(", ")}`);
+  } else {
+    const txns = all.filter((p) => p.txnId).map((p) => p.txnId);
+    console.log(`\n  Transaction ids: ${txns.length > 0 ? txns.join(", ") : "none"}`);
+    console.log("  (Settlement reported for each; verify at dashboard.prava.space.)");
+  }
   console.log(`${"═".repeat(78)}\n`);
 }
 
