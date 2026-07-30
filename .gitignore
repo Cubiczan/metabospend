@@ -1,0 +1,6 @@
+node_modules/
+.next/
+*.sqlite
+*.sqlite-*
+.env
+.env.local
