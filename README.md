@@ -129,27 +129,42 @@ agents proposing spend is old, and every line of code that makes the spend
 
 ## Status
 
-Pre-event scaffold, built July 30 (disclosed above):
+Built July 30, ahead of the event window (disclosed above):
 
 - [x] Spend governor — six gates, mandate selection, minor-unit money math
-- [x] 23 characterization tests pinning the money math and gate order
 - [x] Prava CLI client — mandate charge, session mint, settlement reporting
-- [ ] Senso grounding client
-- [ ] The three agents
-- [ ] Ledger + evidence packet persistence (`node:sqlite`, zero deps)
-- [ ] Dashboard
-- [ ] End-to-end: proposal → governor → Prava sandbox charge → settled
+- [x] Senso grounding gate, with an offline fixture source
+- [x] Ledger + evidence packets (`node:sqlite`, zero runtime dependencies)
+- [x] Restock, Renewal, and Budget agents
+- [x] End-to-end loop, offline: proposal → governor → charge → settle → report
+- [x] 52 tests · money math, gate order, settlement invariants, agent logic
+
+Remaining, for the event window (see [PLAN.md](docs/PLAN.md)):
+
+- [ ] Live Prava mandates and one real, reported transaction — the priority
+- [ ] Senso corpus loaded, response shape confirmed against the live API
+- [ ] Dashboard: spend feed, approval queue, evidence packet
+- [ ] OpenAI-written rationales and a natural-language "why was this refused?"
+- [ ] Linq iMessage approval channel *(stretch — cut if the core isn't recorded)*
 
 ---
 
 ## Running it
 
-Requires Node 24+ (uses native TypeScript type stripping and `node:sqlite`).
-Tested on Node 26.
+Requires Node 24+ (native TypeScript type stripping and `node:sqlite`). Tested on
+Node 26. No runtime dependencies.
 
 ```bash
-npm test
+npm test       # 52 tests
+npm run demo   # the full loop, offline — no keys, no network
+npm run typecheck
 ```
+
+`npm run demo` puts six proposals from three agents through the governor: three
+settle automatically, one is queued and then cleared by a person, and two are
+refused — one for an off-allowlist supplier, one for an approved supplier with no
+policy clause behind it. It prints the mandate balances before and after, and
+asserts no network authorization was left unsettled.
 
 The Prava CLI is a separate install, and you install it yourself — this project
 never installs it for you and never asks for your card details or keys:
