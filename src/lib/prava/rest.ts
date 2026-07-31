@@ -135,7 +135,18 @@ export class PravaRestClient implements PravaGateway {
    * so it is filtered out here rather than relied on to fail later.
    */
   async listMandates(): Promise<Mandate[]> {
-    const body = await this.request<Record<string, unknown>>("GET", `/v1/mandates?customer_id=${encodeURIComponent(this.customer.id)}&standing_only=true`);
+    // A customer only exists once a session or mandate has been created for it,
+    // so filtering by one that has never transacted returns CUSTOMER_NOT_FOUND.
+    // That means "no mandates", not "something is broken" — and it is the state
+    // every fresh sandbox account starts in.
+    const body = await this.request<Record<string, unknown>>(
+      "GET",
+      `/v1/mandates?customer_id=${encodeURIComponent(this.customer.id)}&standing_only=true`,
+      undefined,
+      { allowStatus: [404] },
+    );
+    if (errorCodeOf(body) === "CUSTOMER_NOT_FOUND") return [];
+
     const rows = Array.isArray(body.mandates) ? body.mandates : Array.isArray(body) ? body : [];
 
     return rows
@@ -202,10 +213,13 @@ export class PravaRestClient implements PravaGateway {
   }
 
   async createSession(args: { total: string; currency: string; merchant: Merchant; items: LineItem[] }): Promise<SessionHandle> {
+    // Field names verified against the API's own validator, not the prose docs:
+    // it requires `total_amount` (not `amount`), and product lines take
+    // `unit_price` (not `amount`). Sending the guide's names returns VAL_2001.
     const result = await this.request<Record<string, unknown>>("POST", "/v1/sessions", {
       user_id: this.customer.id,
       user_email: this.customer.email,
-      amount: args.total,
+      total_amount: args.total,
       currency: args.currency,
       description: `MetaboSpend — ${args.merchant.name}`,
       purchase_context: [{
@@ -216,9 +230,10 @@ export class PravaRestClient implements PravaGateway {
         },
         product_details: args.items.map((item) => ({
           description: item.description,
-          amount: toDecimal(Math.round(Number(item.unit_price) * 100) * item.quantity),
+          unit_price: item.unit_price,
           quantity: item.quantity,
         })),
+        effective_until_minutes: 15,
       }],
     });
 
@@ -239,16 +254,27 @@ export class PravaRestClient implements PravaGateway {
     const intervalMs = options.intervalMs ?? 3_000;
 
     for (let attempt = 0; attempt < attempts; attempt++) {
-      const body = await this.request<Record<string, unknown>>("GET", `/v1/sessions/${encodeURIComponent(sessionId)}/payment-result`);
+      // The cache-buster is not superstition: without it Next.js and other fetch
+      // layers dedupe the identical polling request and hand back a stale
+      // "pending" forever.
+      const body = await this.request<Record<string, unknown>>(
+        "GET",
+        `/v1/sessions/${encodeURIComponent(sessionId)}/payment-result?_t=${attempt}-${process.hrtime.bigint()}`,
+      );
       const status = String(body.status ?? "").toLowerCase();
       const txn = (Array.isArray(body.transactions) ? body.transactions[0] : undefined) as Record<string, unknown> | undefined;
 
       if (status === "completed" && txn) {
+        // Credentials live on the transaction's *line item*, not the transaction
+        // itself — reading txn.token directly yields undefined and a silent
+        // "no credential" failure.
+        const line = (Array.isArray(txn.line_items) ? txn.line_items[0] : undefined) as Record<string, unknown> | undefined;
+        const source = line ?? txn;
         return {
-          token: String(txn.token ?? ""),
-          cryptogram: String(txn.dynamic_cvv ?? txn.dynamicCvv ?? ""),
-          expiryMonth: String(txn.expiry_month ?? txn.expiryMonth ?? ""),
-          expiryYear: String(txn.expiry_year ?? txn.expiryYear ?? ""),
+          token: String(source.token ?? ""),
+          cryptogram: String(source.dynamic_cvv ?? source.dynamicCvv ?? ""),
+          expiryMonth: String(source.expiry_month ?? source.expiryMonth ?? ""),
+          expiryYear: String(source.expiry_year ?? source.expiryYear ?? ""),
           txnId: String(txn.txn_id ?? txn.txnId ?? sessionId),
         };
       }
@@ -284,10 +310,11 @@ export class PravaRestClient implements PravaGateway {
       const parsed = text ? safeJson(text) : {};
 
       if (!response.ok && !(options.allowStatus ?? []).includes(response.status)) {
-        const detail = typeof parsed === "object" && parsed !== null
-          ? String((parsed as Record<string, unknown>).message ?? (parsed as Record<string, unknown>).error ?? text.slice(0, 300))
-          : text.slice(0, 300);
-        throw new PravaError(`${method} ${path} → ${response.status}: ${detail}`, `HTTP_${response.status}`, null);
+        throw new PravaError(
+          `${method} ${path} → ${response.status}: ${describeError(parsed, text)}`,
+          errorCodeOf(parsed) ?? `HTTP_${response.status}`,
+          null,
+        );
       }
       return parsed as T;
     } catch (error) {
@@ -300,6 +327,36 @@ export class PravaRestClient implements PravaGateway {
       clearTimeout(timer);
     }
   }
+}
+
+/**
+ * Prava nests its errors as `{ error: { code, message } }`, so reading `.message`
+ * or `.error` off the top level yields "[object Object]" and throws away the one
+ * piece of information worth having.
+ */
+function errorCodeOf(body: unknown): string | null {
+  if (typeof body !== "object" || body === null) return null;
+  const b = body as Record<string, unknown>;
+  const nested = b.error;
+  if (typeof nested === "object" && nested !== null) {
+    const code = (nested as Record<string, unknown>).code;
+    if (typeof code === "string") return code;
+  }
+  return typeof b.code === "string" ? b.code : null;
+}
+
+function describeError(body: unknown, raw: string): string {
+  if (typeof body === "object" && body !== null) {
+    const b = body as Record<string, unknown>;
+    const nested = b.error;
+    if (typeof nested === "object" && nested !== null) {
+      const { code, message } = nested as Record<string, unknown>;
+      if (typeof message === "string") return code ? `${String(code)}: ${message}` : message;
+    }
+    if (typeof nested === "string") return nested;
+    if (typeof b.message === "string") return b.message;
+  }
+  return raw.slice(0, 300);
 }
 
 function normalizeFrequency(raw: unknown): Mandate["frequency"] {

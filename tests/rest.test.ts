@@ -234,3 +234,74 @@ describe("pollSession", () => {
     await assert.rejects(() => client().pollSession("sess_1", { attempts: 2, intervalMs: 1 }), /did not complete within the polling window/);
   });
 });
+
+describe("createSession — field names verified against the live sandbox", () => {
+  // These three assertions exist because all three were wrong at first, and each
+  // failed silently or confusingly: the API returns VAL_2001 "Invalid request
+  // body" for the first two, and the third yields an empty credential with no
+  // error at all. Prava's own sdk-template ships with the first two bugs.
+  it("sends total_amount, not amount", async () => {
+    const calls = stubFetch([{ body: { session_id: "ses_1", session_token: "t", iframe_url: "https://sandbox.collect.prava.space?session=ses_1" } }]);
+    await client().createSession({
+      total: "21.60", currency: "USD",
+      merchant: { name: "Acme Supply", url: "https://acmesupply.com", country: "US" },
+      items: [{ description: "Widget case", unit_price: "21.60", quantity: 1 }],
+    });
+    const body = calls[0].body as Record<string, unknown>;
+    assert.equal(body.total_amount, "21.60");
+    assert.equal(body.amount, undefined, "`amount` is rejected by the API as a missing-field error");
+  });
+
+  it("sends product lines with unit_price, not amount", async () => {
+    const calls = stubFetch([{ body: { session_id: "ses_1", session_token: "t", iframe_url: "https://x.prava.space" } }]);
+    await client().createSession({
+      total: "43.20", currency: "USD",
+      merchant: { name: "Acme Supply", url: "https://acmesupply.com", country: "US" },
+      items: [{ description: "Widget case", unit_price: "21.60", quantity: 2 }],
+    });
+    const context = (calls[0].body as Record<string, unknown>).purchase_context as Array<Record<string, unknown>>;
+    const products = context[0].product_details as Array<Record<string, unknown>>;
+    assert.equal(products[0].unit_price, "21.60", "unit price, not the line total");
+    assert.equal(products[0].quantity, 2);
+    assert.equal(products[0].amount, undefined);
+  });
+
+  it("reads credentials from transactions[0].line_items[0], not the transaction", async () => {
+    stubFetch([{ body: { status: "completed", transactions: [{
+      txn_id: "txn_deep",
+      line_items: [{ token: "4323126882557932", dynamic_cvv: "321", expiry_month: "12", expiry_year: "2027" }],
+    }] } }]);
+    const credential = await client().pollSession("ses_1", { attempts: 2, intervalMs: 1 });
+    assert.equal(credential.token, "4323126882557932", "reading txn.token directly yields an empty credential");
+    assert.equal(credential.cryptogram, "321");
+    assert.equal(credential.txnId, "txn_deep");
+  });
+
+  it("still reads a flat transaction shape, so an API change either way is survivable", async () => {
+    stubFetch([{ body: { status: "completed", transactions: [{ txn_id: "txn_flat", token: "4111111111111111", dynamic_cvv: "999" }] } }]);
+    const credential = await client().pollSession("ses_1", { attempts: 2, intervalMs: 1 });
+    assert.equal(credential.token, "4111111111111111");
+  });
+});
+
+describe("listMandates — a customer that has never transacted", () => {
+  it("treats CUSTOMER_NOT_FOUND as no mandates rather than an outage", async () => {
+    // Every fresh sandbox account starts here: filtering by a customer_id that
+    // has never transacted 404s, which means "nothing authorized yet".
+    stubFetch([{ status: 404, body: { error: { code: "CUSTOMER_NOT_FOUND", message: "No such customer for this merchant" } } }]);
+    assert.deepEqual(await client().listMandates(), []);
+  });
+
+  it("surfaces the nested error code and message, not [object Object]", async () => {
+    stubFetch([{ status: 401, body: { error: { code: "AUTH_1001", message: "Invalid API key" } } }]);
+    await assert.rejects(
+      () => client().chargeMandate({ mandateId: "mdt_1", amount: "1.00" }),
+      (error: unknown) => {
+        assert.ok(error instanceof PravaError);
+        assert.equal(error.code, "AUTH_1001");
+        assert.match(error.message, /AUTH_1001: Invalid API key/);
+        return true;
+      },
+    );
+  });
+});

@@ -176,7 +176,7 @@ export class PravaClient implements PravaGateway {
     }
     const { stdout } = await this.exec(argv);
     const paymentUrl = stdout.match(/https?:\/\/\S+/)?.[0];
-    const sessionId = stdout.match(/\bsess_[A-Za-z0-9]+/)?.[0];
+    const sessionId = stdout.match(/\bses_[A-Za-z0-9]+/)?.[0];
     if (!paymentUrl || !sessionId) {
       throw new PravaError(`could not parse session from CLI output: ${stdout.slice(0, 400)}`, "PARSE_FAILED", 0);
     }
