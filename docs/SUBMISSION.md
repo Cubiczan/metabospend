@@ -10,15 +10,20 @@ MetaboSpend
 
 ## Tagline
 
-Devfolio enforces **2–50 characters** — not the 132 I first assumed. Anything
-longer is rejected by the API, draft or publish.
+> **Agents propose. Mandates authorize. Money moves.**
 
-> Agents propose. Mandates authorize. Money moves.
+48 characters, inside Devfolio's **2–50** limit (not the 132 first assumed — a
+longer tagline is rejected by the API, draft or publish).
 
-(48 characters. Names the three lanes, which is the whole architecture.)
+It earns its place by naming the three lanes in order, so the architecture is
+legible before a judge has read a word of the description. "Authorize" is doing
+deliberate work: it is the mandate, not the agent, that holds the authority — which
+is the one idea the whole project rests on.
 
-Alternates, both under the limit: *"Governed spend reflex for eCommerce ops
-agents"* (45) · *"The spend control plane for ops agents"* (37)
+Held in reserve, both within the limit, if a more literal framing is wanted:
+
+- *Governed spend reflex for eCommerce ops agents* (46) — says the domain, loses the mechanism
+- *The spend control plane for ops agents* (38) — says the category, loses the story
 
 ## The problem
 

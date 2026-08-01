@@ -1,9 +1,10 @@
 # MetaboSpend
 
-**The governed spend reflex for eCommerce operations agents.**
+> **Agents propose. Mandates authorize. Money moves.**
 
-Your ops agents already know what to buy. MetaboSpend is the layer that lets them
-actually buy it — and the layer that decides when they may not.
+The governed spend reflex for eCommerce operations agents. Your ops agents already
+know what to buy. MetaboSpend is the layer that lets them actually buy it — and the
+layer that decides when they may not.
 
 Three agents watch an eCommerce operation and propose real money movements:
 a **Restock Agent** that issues supplier POs before a stockout, a **Renewal Agent**

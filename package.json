@@ -1,6 +1,7 @@
 {
   "name": "metabospend",
   "version": "0.1.0",
+  "description": "Agents propose. Mandates authorize. Money moves.",
   "private": true,
   "type": "module",
   "engines": {
