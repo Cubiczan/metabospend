@@ -121,9 +121,28 @@ production story.
 | `GET /v1/mandates` | `200 {"mandates":[]}` |
 | `GET /v1/mandates?customer_id=…` | `404 CUSTOMER_NOT_FOUND` until first transaction |
 
-## Blocked on Prava
+## Sandbox test card — received, with a budget
 
-**Sandbox test card numbers.** Both the template UI and the SDK skill say network
-test cards are issued by the Prava team — `support@prava.space`. Without them the
-card-entry and passkey steps cannot be exercised at all, which is the last
-unverified stretch of the flow.
+The Prava team issued a test card on 30 July (details in
+`.metabospend/sandbox-test-card.txt`, gitignored — a card number does not belong
+in a tracked file, test or not).
+
+Two things about it that change how we work:
+
+**The expiry was corrected.** A first email said `12/27`; the correct expiry is
+`12/30`. Card number and CVV were unchanged. Use 12/30 — the earlier value will
+just fail validation and send you debugging the wrong thing.
+
+**30 transactions per day, and the card is unique to this team.** That is a real
+budget, not a formality. `npm run demo:live` puts through 4 charges per run, so
+the whole day is about **7 full live runs**.
+
+Plan around it:
+
+- Rehearse with `npm run demo` — the offline double costs nothing and exercises
+  the identical code path. Every iteration on wording, ordering, or output
+  formatting should happen there.
+- Spend live runs only on things that genuinely need the network: confirming a
+  real charge settles, and confirming a mandate balance actually draws down.
+- **Keep a few in reserve for the video.** Running out mid-recording on the last
+  evening would be a bad way to lose the transaction id the submission rests on.

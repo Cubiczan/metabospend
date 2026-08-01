@@ -27,6 +27,20 @@ Four things gate everything else, and three of them need you, not the code:
    refuses every grounded agent's spend — which is correct behaviour, and makes for
    a poor demo.
 
+Items 1–3 are **done**. Sandbox keys are in `.env`, the agent is linked, and the
+test card has arrived (`.metabospend/sandbox-test-card.txt`).
+
+### The transaction budget
+
+The sandbox test card allows **30 transactions per day**, and it is unique to this
+team. `npm run demo:live` spends 4 of them. That is roughly seven live runs a day —
+enough, but only if it is not wasted.
+
+Rehearse on `npm run demo` (offline, free, identical code path). Spend live runs on
+things that actually need the network, and **hold several back for the recording**.
+Discovering the limit mid-video on Sunday evening would cost the one artifact the
+submission depends on.
+
 ## Hour 0–6 — make it real
 
 Replace the two doubles with live clients. Nothing else changes; that is the point
