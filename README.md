@@ -16,6 +16,46 @@ against passkey-approved mandates, so no agent ever touches a card number.
 
 ---
 
+## What it looks like running
+
+### Six proposals, three lanes
+
+![Three lanes](docs/screenshots/01-three-lanes.png)
+
+Three spends clear automatically, one is queued for a person, and two are refused
+— one for an off-allowlist supplier, one for an approved supplier with no policy
+clause behind it. Each line shows the gates it passed and why.
+
+### The human gate, and the ledger
+
+![Approval and ledger](docs/screenshots/02-approval-and-ledger.png)
+
+The over-cap proposal is cleared by a person and settles against the same mandate.
+Balances are re-read from Prava afterwards rather than inferred, and the run
+asserts that no network authorization was left open.
+
+### The artifact: an evidence packet
+
+![Evidence for a spend that happened](docs/screenshots/03-evidence-spend-happened.png)
+
+The answer to *who authorized this*. Note `authorized by` — a clause from published
+procurement policy, not the agent's own reasoning.
+
+![Evidence for a spend that was refused](docs/screenshots/04-evidence-spend-refused.png)
+
+And the half people forget: a spend that never happened is still auditable.
+Northport is an approved **merchant** with no **policy** covering the order.
+
+### Tests, and the live sandbox
+
+![Tests](docs/screenshots/05-tests.png)
+![Live Prava sandbox](docs/screenshots/06-live-prava-sandbox.png)
+
+78 assertions pin the money math, the gate order, and the settlement invariants.
+On the right, the same code path against real Prava sandbox infrastructure.
+
+---
+
 ## The idea
 
 An agent's **auto-execute threshold** and a Prava **mandate cap** are the same
