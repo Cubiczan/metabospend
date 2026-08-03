@@ -15,7 +15,8 @@
     "demo:live": "node --env-file=.env --import ./tests/register-ts.mjs src/demo/run.ts",
     "setup:mandates": "node --env-file=.env --import ./tests/register-ts.mjs src/scripts/setup-mandates.ts",
     "check": "node --env-file=.env --import ./tests/register-ts.mjs src/scripts/check.ts",
-    "evidence": "node --import ./tests/register-ts.mjs src/scripts/evidence.ts"
+    "evidence": "node --import ./tests/register-ts.mjs src/scripts/evidence.ts",
+    "export:approvals": "node --import ./tests/register-ts.mjs src/scripts/export-approvals.ts"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
