@@ -219,4 +219,4 @@ browser). Set `PRAVA_BIN` to the binary's absolute path if it isn't on `PATH`.
 
 ## License
 
-MIT.
+MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Shyam Desigan.

@@ -2,6 +2,7 @@
   "name": "metabospend",
   "version": "0.1.0",
   "description": "Agents propose. Mandates authorize. Money moves.",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "engines": {
